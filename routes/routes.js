@@ -1,13 +1,13 @@
 const express = require("express")
 const router = express.Router()
-const dbConfig = require("../dbConfig.js")
 const pool = require("../dbConfig.js")
 const bcrypt = require("bcrypt")
 const dotenv = require("dotenv").config()
+const multer = require("multer")
+const path = require("path")
+const fs = require("fs")
 
-const salt = parseInt(process.env.SALT)
-
-console.log(salt)
+const salt = parseInt(process.env.SALT) // For bcrypt password hashing
 
 // Get All Users
 router.get("/users", async (req, res) => {
@@ -121,6 +121,36 @@ router.delete("/users/:id", async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
+})
+
+// File uploads
+
+// Multer Storage Config
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, `uploads/`)
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + "-" + file.originalname)
+  },
+})
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!file.originalname.match(/\.(jpg|jpeg|png|gif)$/)) {
+      req.fileFilterError = "Only JPG, JPEG, PNG and GIF files are allowed."
+      return cb(new Error("Only JPG, JPEG, PNG and GIF files are allowed."))
+    }
+
+    cb(null, true)
+  },
+})
+
+router.post("/users/:id/upload-image", upload.single("image"), (req, res) => {
+  console.log("Uploaded File", req.file)
+  res.json({ message: "File uploaded successfully" })
 })
 
 module.exports = router
