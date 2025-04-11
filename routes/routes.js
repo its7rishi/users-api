@@ -6,6 +6,8 @@ const dotenv = require("dotenv").config()
 const multer = require("multer")
 const path = require("path")
 const fs = require("fs")
+const { v4: uuidv4 } = require("uuid")
+const moment = require("moment")
 
 const salt = parseInt(process.env.SALT) // For bcrypt password hashing
 
@@ -127,11 +129,24 @@ router.delete("/users/:id", async (req, res) => {
 
 // Multer Storage Config
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, `uploads/`)
+  destination: async (req, file, cb) => {
+    const userId = req.params.id
+    const uploadDir = path.join(__dirname, "../uploads", userId, "images")
+
+    try {
+      // Create the directory structure if it doesn't exist
+      await fs.mkdirSync(uploadDir, { recursive: true })
+      cb(null, uploadDir)
+    } catch (err) {
+      console.error("Error creating directory", err)
+      cb(err)
+    }
   },
   filename: (req, file, cb) => {
-    cb(null, Date.now() + "-" + file.originalname)
+    const now = moment().format("YYYYMMDD")
+    const fileExtension = path.extname(file.originalname)
+    const filename = `${now}-${uuidv4()}${fileExtension}`
+    cb(null, filename)
   },
 })
 
@@ -148,9 +163,28 @@ const upload = multer({
   },
 })
 
-router.post("/users/:id/upload-image", upload.single("image"), (req, res) => {
-  console.log("Uploaded File", req.file)
-  res.json({ message: "File uploaded successfully" })
-})
+router.post(
+  "/users/:id/upload-image",
+  upload.single("image"),
+  async (req, res) => {
+    if (!req.file) {
+      return res
+        .status(400)
+        .json({ error: "No file uploaded. Please select a file to upload" })
+    }
+    const userId = req.params.id
+    // console.log("Uploaded File", req.file)
+    const filePath = path.join("/uploads", userId, "images", req.file.filename)
+    try {
+      const result = await pool.query(
+        "UPDATE users SET image_url = $1 WHERE user_id = $2",
+        [filePath, userId]
+      )
+      res.json({ message: "File uploaded successfully", filePath })
+    } catch (err) {
+      res.status(500).json({ error: err.message })
+    }
+  }
+)
 
 module.exports = router
