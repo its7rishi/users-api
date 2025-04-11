@@ -134,11 +134,21 @@ const storage = multer.diskStorage({
     const uploadDir = path.join(__dirname, "../uploads", userId, "images")
 
     try {
-      // Create the directory structure if it doesn't exist
-      await fs.mkdirSync(uploadDir, { recursive: true })
-      cb(null, uploadDir)
+      // Check if user exists
+      const checkResult = await pool.query(
+        "SELECT * FROM users WHERE user_id = $1",
+        [userId]
+      )
+
+      if (checkResult.rows.length > 0) {
+        // Create the directory structure if it doesn't exist
+        await fs.mkdirSync(uploadDir, { recursive: true })
+        cb(null, uploadDir)
+      } else {
+        return cb(new Error("User Id does not exist"))
+      }
     } catch (err) {
-      console.error("Error creating directory", err)
+      console.error("Error checking valid user id", err)
       cb(err)
     }
   },
@@ -172,18 +182,27 @@ router.post(
         .status(400)
         .json({ error: "No file uploaded. Please select a file to upload" })
     }
-    const userId = req.params.id
+
     // console.log("Uploaded File", req.file)
+    const userId = req.params.id
     const filePath = path.join("/uploads", userId, "images", req.file.filename)
     try {
       const result = await pool.query(
-        "UPDATE users SET image_url = $1 WHERE user_id = $2",
-        [filePath, userId]
+        "INSERT INTO images (user_id, image_url) VALUES($1, $2)",
+        [userId, filePath]
       )
-      res.json({ message: "File uploaded successfully", filePath })
+      res.json({ message: "File uploaded successfully" })
     } catch (err) {
       res.status(500).json({ error: err.message })
     }
+  },
+  (error, req, res) => {
+    // Error handling middleware for Multer errors
+    if (error) {
+      console.error("Multer error", error)
+      return res.status(400).json({ error: error.message })
+    }
+    next()
   }
 )
 
